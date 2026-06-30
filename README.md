@@ -5,7 +5,7 @@
 ## 在线试玩
 
 GitHub Pages 部署后可通过以下地址访问：
-`https://你的用户名.github.io/tank-battle/`
+`https://ytao03313-hash.github.io/tank-battle/`
 
 ## 操作说明
 
@@ -36,7 +36,7 @@ GitHub Pages 部署后可通过以下地址访问：
 ## 本地运行
 
 ```bash
-git clone https://github.com/你的用户名/tank-battle.git
+git clone https://github.com/ytao03313-hash/tank-battle.git
 cd tank-battle
 # 直接用浏览器打开 index.html
 start index.html
