@@ -81,6 +81,25 @@
       0%, 100% { opacity: 1; }
       50% { opacity: 0.3; }
     }
+    #muteBtn {
+      position: absolute;
+      top: 15px;
+      right: 15px;
+      padding: 6px 12px;
+      background: rgba(0, 0, 0, 0.6);
+      border: 2px solid #555;
+      border-radius: 6px;
+      color: #fff;
+      font-family: inherit;
+      font-size: 14px;
+      cursor: pointer;
+      pointer-events: auto;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    #muteBtn:hover {
+      border-color: #ffcc00;
+      background: rgba(0, 0, 0, 0.8);
+    }
   </style>
 </head>
 <body>
@@ -92,6 +111,7 @@
       <div>关卡: <span id="level">1</span></div>
       <div>敌人: <span id="enemies">0</span></div>
     </div>
+    <button id="muteBtn">🔊 音效</button>
     <div id="screen">
       <h1>坦克大战</h1>
       <h2>TANK BATTLE</h2>
@@ -99,6 +119,7 @@
       <div class="controls">
         <p><strong>WASD / 方向键</strong> - 移动坦克</p>
         <p><strong>空格键</strong> - 开火</p>
+        <p><strong>M 键</strong> - 切换音效</p>
         <p>消灭所有敌人坦克即可获胜</p>
       </div>
     </div>
@@ -113,6 +134,8 @@
     const livesEl = document.getElementById('lives');
     const levelEl = document.getElementById('level');
     const enemiesEl = document.getElementById('enemies');
+
+    const muteBtn = document.getElementById('muteBtn');
 
     let width, height;
     function resize() {
@@ -134,10 +157,138 @@
           if (e.code === 'Enter' && game.state !== STATE.PLAYING) {
             game.start();
           }
+          if (e.code === 'KeyM') {
+            game.sound.toggle();
+            muteBtn.textContent = game.sound.enabled ? '🔊 音效' : '🔇 音效';
+          }
         });
         window.addEventListener('keyup', e => this.keys[e.code] = false);
       }
       down(code) { return !!this.keys[code]; }
+    }
+
+    class Sound {
+      constructor() {
+        this.ctx = null;
+        this.enabled = true;
+      }
+      init() {
+        if (!this.ctx) {
+          this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
+      toggle() {
+        this.enabled = !this.enabled;
+        return this.enabled;
+      }
+      playShoot() {
+        if (!this.enabled || !this.ctx) return;
+        const t = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(880, t);
+        osc.frequency.exponentialRampToValueAtTime(220, t + 0.12);
+        gain.gain.setValueAtTime(0.12, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(t);
+        osc.stop(t + 0.12);
+      }
+      playExplosion() {
+        if (!this.enabled || !this.ctx) return;
+        const t = this.ctx.currentTime;
+        const duration = 0.35;
+        const bufferSize = this.ctx.sampleRate * duration;
+        const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+          data[i] = Math.random() * 2 - 1;
+        }
+        const noise = this.ctx.createBufferSource();
+        noise.buffer = buffer;
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(1200, t);
+        filter.frequency.exponentialRampToValueAtTime(80, t + duration);
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(0.35, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + duration);
+        noise.connect(filter);
+        filter.connect(gain);
+        gain.connect(this.ctx.destination);
+        noise.start(t);
+        noise.stop(t + duration);
+      }
+      playHit() {
+        if (!this.enabled || !this.ctx) return;
+        const t = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(220, t);
+        osc.frequency.exponentialRampToValueAtTime(50, t + 0.08);
+        gain.gain.setValueAtTime(0.18, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(t);
+        osc.stop(t + 0.08);
+      }
+      playStart() {
+        if (!this.enabled || !this.ctx) return;
+        const t = this.ctx.currentTime;
+        [330, 392, 494, 659].forEach((freq, i) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.value = freq;
+          gain.gain.setValueAtTime(0, t + i * 0.08);
+          gain.gain.linearRampToValueAtTime(0.15, t + i * 0.08 + 0.03);
+          gain.gain.exponentialRampToValueAtTime(0.001, t + i * 0.08 + 0.25);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(t + i * 0.08);
+          osc.stop(t + i * 0.08 + 0.3);
+        });
+      }
+      playWin() {
+        if (!this.enabled || !this.ctx) return;
+        const t = this.ctx.currentTime;
+        [523.25, 659.25, 783.99, 1046.50].forEach((freq, i) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'square';
+          osc.frequency.value = freq;
+          gain.gain.setValueAtTime(0, t + i * 0.12);
+          gain.gain.linearRampToValueAtTime(0.15, t + i * 0.12 + 0.04);
+          gain.gain.exponentialRampToValueAtTime(0.001, t + i * 0.12 + 0.35);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(t + i * 0.12);
+          osc.stop(t + i * 0.12 + 0.4);
+        });
+      }
+      playGameOver() {
+        if (!this.enabled || !this.ctx) return;
+        const t = this.ctx.currentTime;
+        [440, 349.23, 293.66, 220].forEach((freq, i) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sawtooth';
+          osc.frequency.value = freq;
+          gain.gain.setValueAtTime(0.15, t + i * 0.25);
+          gain.gain.exponentialRampToValueAtTime(0.001, t + i * 0.25 + 0.22);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(t + i * 0.25);
+          osc.stop(t + i * 0.25 + 0.25);
+        });
+      }
     }
 
     class Particle {
@@ -305,7 +456,10 @@
         if (input.down('KeyD') || input.down('ArrowRight')) this.rotateRight();
         if (input.down('Space')) {
           const bullet = this.shoot();
-          if (bullet) game.bullets.push(bullet);
+          if (bullet) {
+            game.bullets.push(bullet);
+            game.sound.playShoot();
+          }
         }
       }
       respawn() {
@@ -350,7 +504,10 @@
           if (dist > 80) this.moveForward();
           if (Math.abs(diff) < 0.3) {
             const bullet = this.shoot();
-            if (bullet) game.bullets.push(bullet);
+            if (bullet) {
+              game.bullets.push(bullet);
+              game.sound.playShoot();
+            }
           }
         } else {
           this.turnTimer--;
@@ -370,6 +527,7 @@
     class Game {
       constructor() {
         this.input = new Input();
+        this.sound = new Sound();
         this.state = STATE.MENU;
         this.score = 0;
         this.level = 1;
@@ -379,6 +537,11 @@
         this.bullets = [];
         this.particles = [];
         this.shake = 0;
+
+        muteBtn.addEventListener('click', () => {
+          const on = this.sound.toggle();
+          muteBtn.textContent = on ? '🔊 音效' : '🔇 音效';
+        });
       }
 
       findSpawn(type) {
@@ -408,12 +571,14 @@
       }
 
       start() {
+        this.sound.init();
         this.state = STATE.PLAYING;
         this.score = 0;
         this.level = 1;
         this.loadLevel(1);
         hud.style.display = 'block';
         this.updateHud();
+        this.sound.playStart();
       }
 
       loadLevel(level) {
@@ -442,6 +607,7 @@
       nextLevel() {
         if (this.level >= 3) {
           this.state = STATE.WIN;
+          this.sound.playWin();
           this.showScreen('win');
         } else {
           this.loadLevel(this.level + 1);
@@ -450,6 +616,7 @@
 
       gameOver() {
         this.state = STATE.GAMEOVER;
+        this.sound.playGameOver();
         this.showScreen('gameover');
       }
 
@@ -496,6 +663,7 @@
       }
 
       spawnExplosion(x, y, color, count = 12) {
+        this.sound.playExplosion();
         for (let i = 0; i < count; i++) {
           this.particles.push(new Particle(x, y, color, Math.random() * 4 + 2, 30 + Math.random() * 20));
         }
@@ -538,6 +706,8 @@
               if (wall.dead) {
                 this.score += 10;
                 this.walls.splice(w, 1);
+              } else {
+                this.sound.playHit();
               }
               this.bullets.splice(i, 1);
               break;
